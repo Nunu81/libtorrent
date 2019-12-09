@@ -713,7 +713,7 @@ namespace libtorrent
 	{
 		if (!m_seed_mode) return;
 
-		if (!skip_checking)
+		/* if (!skip_checking)
 		{
 			// this means the user promised we had all the
 			// files, but it turned out we didn't. This is
@@ -741,7 +741,7 @@ namespace libtorrent
 		}
 		m_num_verified = 0;
 		m_verified.clear();
-		m_verifying.clear();
+		m_verifying.clear(); */
 
 		set_need_save_resume();
 	}
@@ -2590,7 +2590,7 @@ namespace libtorrent
 
 						// being in seed mode and missing a piece is not compatible.
 						// Leave seed mode if that happens
-						if (m_seed_mode) leave_seed_mode(true);
+						//if (m_seed_mode) leave_seed_mode(true);
 
 						if (has_picker() && m_picker->have_piece(piece))
 						{
@@ -2655,7 +2655,7 @@ namespace {
 	{
 		INVARIANT_CHECK;
 
-		if (!valid_metadata()) return;
+		if (!valid_metadata() || m_seed_mode) return;
 
 		// if the torrent is already queued to check its files
 		// don't do anything
@@ -3818,7 +3818,7 @@ namespace {
 	// issued by libtorrent)
 	void torrent::force_tracker_request(time_point t, int tracker_idx)
 	{
-		//if (is_paused()) return;
+		if (is_paused()) return;
 		if (tracker_idx == -1)
 		{
 			for (std::vector<announce_entry>::iterator i = m_trackers.begin()
@@ -3932,7 +3932,7 @@ namespace {
 
 		// if any piece hash fails, we'll be taken out of seed mode
 		// and m_seed_mode will be false
-		if (m_seed_mode) return m_torrent_file->total_size();
+		//if (m_seed_mode) return m_torrent_file->total_size();
 
 		if (!has_picker()) return m_have_all ? m_torrent_file->total_size() : 0;
 
@@ -4239,7 +4239,7 @@ namespace {
 		if (m_abort) return;
 
 		int ret = j->ret;
-		if (settings().get_bool(settings_pack::disable_hash_checks))
+		if (m_seed_mode || settings().get_bool(settings_pack::disable_hash_checks))
 		{
 			ret = 0;
 		}
@@ -7264,14 +7264,14 @@ namespace {
 				&& pieces.string_length() == m_torrent_file->num_pieces())
 			{
 				char const* pieces_str = pieces.string_ptr();
-				for (int i = 0, end(pieces.string_length()); i < end; ++i)
+/* 				for (int i = 0, end(pieces.string_length()); i < end; ++i)
 				{
 					// being in seed mode and missing a piece is not compatible.
 					// Leave seed mode if that happens
 					if ((pieces_str[i] & 1)) continue;
 					m_seed_mode = false;
 					break;
-				}
+				} */
 			}
 
 			bdecode_node piece_priority = rd.dict_find_string("piece_priority");
@@ -7279,12 +7279,12 @@ namespace {
 				== m_torrent_file->num_pieces())
 			{
 				char const* p = piece_priority.string_ptr();
-				for (int i = 0; i < piece_priority.string_length(); ++i)
+				/* for (int i = 0; i < piece_priority.string_length(); ++i)
 				{
 					if (p[i] > 0) continue;
 					m_seed_mode = false;
 					break;
-				}
+				} */
 			}
 
 			m_verified.resize(m_torrent_file->num_pieces(), false);
@@ -8725,8 +8725,8 @@ namespace {
 			&& m_state != torrent_status::allocating);
 
 		// we're downloading now, which means we're no longer in seed mode
-		if (m_seed_mode)
-			leave_seed_mode(false);
+		/* if (m_seed_mode)
+			leave_seed_mode(false); */
 
 		TORRENT_ASSERT(!is_finished());
 		set_state(torrent_status::downloading);
@@ -9689,7 +9689,7 @@ namespace {
 		// comparison points were pulled back to the oldest representable value (0)
 		// the left-over time must be transferred into the m_*_time counters.
 
-		if (m_started < seconds)
+		if (m_started < seconds && !is_paused())
 		{
 			int lost_seconds = seconds - m_started;
 			m_active_time += lost_seconds;
@@ -10401,7 +10401,7 @@ namespace {
 		// m_seeding_time does not account for the current "session", just the
 		// time before we last started this torrent. To get the current time, we
 		// need to add the time since we started it
-		return m_seeding_time + ((!is_seed()) ? 0
+		return m_seeding_time + ((!is_seed() || is_paused()) ? 0
 			: m_ses.session_time() - m_became_seed);
 	}
 
@@ -12240,7 +12240,7 @@ namespace {
 		st->download_payload_rate = m_stat.download_payload_rate();
 		st->upload_payload_rate = m_stat.upload_payload_rate();
 
-		if (m_tracker_timer.expires_at() < now)
+		if (is_paused() || m_tracker_timer.expires_at() < now)
 			st->next_announce = seconds(0);
 		else
 			st->next_announce = m_tracker_timer.expires_at() - now;
@@ -12497,7 +12497,7 @@ namespace {
 			}
 		}
 		// announce to the next working tracker
-		if (!m_abort || r.event == tracker_request::stopped)
+		if ((!m_abort && !is_paused()) || r.event == tracker_request::stopped)
 			announce_with_tracker(r.event);
 		update_tracker_timer(aux::time_now());
 	}
